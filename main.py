@@ -42,41 +42,33 @@ except ImportError:
 
 
 # ═══════════════════════════════════════════════════════════
-# 🎨 DESIGN SYSTEM — Colors, Emojis, Fonts
+# 🎨 DESIGN SYSTEM
 # ═══════════════════════════════════════════════════════════
 
 class Colors:
-    """Bot color palette"""
-    PRIMARY = 0x5865F2       # Discord blurple
-    SUCCESS = 0x57F287       # Green
-    WARNING = 0xFEE75C       # Yellow
-    ERROR = 0xED4245         # Red
-    MUSIC = 0x1DB954         # Spotify green
-    DARK = 0x2B2D31          # Dark embed bg
-    ACCENT = 0xEB459E        # Pink
-    INFO = 0x00B0F4          # Sky blue
-    GRADIENT = 0x9B59B6      # Purple
+    PRIMARY = 0x5865F2
+    SUCCESS = 0x57F287
+    WARNING = 0xFEE75C
+    ERROR = 0xED4245
+    MUSIC = 0x1DB954
+    DARK = 0x2B2D31
+    ACCENT = 0xEB459E
+    INFO = 0x00B0F4
+    GRADIENT = 0x9B59B6
 
 
 class E:
-    """Design emoji set — beautiful, consistent"""
-    # Playback
     PLAY = "▶️"; PAUSE = "⏸️"; STOP = "⏹️"; SKIP = "⏭️"
     PREV = "⏮️"; REPLAY = "🔄"; SHUFFLE = "🔀"; LOOP = "🔁"
     LOOP_ONE = "🔂"
-    # Volume
     VOL_HIGH = "🔊"; VOL_LOW = "🔉"; VOL_MUTE = "🔇"; VOL_MED = "🔉"
-    # Status
     OK = "✅"; NO = "❌"; WARN = "⚠️"; INFO = "ℹ️"
     LOAD = "⏳"; SEARCH = "🔍"; SPARKLE = "✨"; STAR = "⭐"
     FIRE = "🔥"; HEART = "💖"
-    # Music
     NOTE = "🎵"; NOTES = "🎶"; HEADPHONES = "🎧"; MIC = "🎤"
     GUITAR = "🎸"; PIANO = "🎹"; DRUM = "🥁"; SAX = "🎷"; VIOLIN = "🎻"
     RADIO = "📻"; TAPE = "📼"; CD = "💿"
-    # Sources
     YT = "▶️"; SPOTIFY = "🟢"; SOUNDCLOUD = "☁️"; APPLE = "🍎"
-    # UI
     QUEUE = "📜"; LIST = "📋"; CLEAR = "🗑️"; ADD = "➕"; REMOVE = "➖"
     CLOCK = "🕒"; HOURGLASS = "⏳"; TIMER = "⏱️"
     FILTER = "🎛️"; EQ = "🎚️"; QUALITY = "💎"; SETTINGS = "⚙️"
@@ -87,12 +79,10 @@ class E:
 
 
 class EmojiConfig:
-    """Loads from emoji_config.json if present, else uses beautiful defaults"""
     def __init__(self):
         try:
             with open('emoji_config.json', 'r', encoding='utf-8') as f:
                 d = json.load(f)
-            # use the file if it exists — copy all keys
             self.__dict__.update({k.upper(): v for k, v in self._flatten(d).items()})
             print("✅ Loaded custom emojis")
         except Exception:
@@ -109,23 +99,21 @@ class EmojiConfig:
 
 
 # ═══════════════════════════════════════════════════════════
-# 🎨 EMBED BUILDER — Beautiful, reusable embeds
+# 🎨 EMBED BUILDER
 # ═══════════════════════════════════════════════════════════
 
 class Embed:
-    """Factory for gorgeous embeds"""
-
     @staticmethod
     def now_playing(track, player, requester=None):
-        """The main now-playing embed"""
         dur = Embed._fmt_ms(track.length)
         pos = player.position
 
-        if "spotify" in track.uri.lower():
+        uri = (track.uri or "").lower()
+        if "spotify" in uri:
             src, col = "Spotify", 0x1DB954
-        elif "youtube" in track.uri.lower() or "youtu.be" in track.uri.lower():
+        elif "youtube" in uri or "youtu.be" in uri:
             src, col = "YouTube", 0xFF0000
-        elif "soundcloud" in track.uri.lower():
+        elif "soundcloud" in uri:
             src, col = "SoundCloud", 0xFF5500
         else:
             src, col = "Unknown", Colors.MUSIC
@@ -141,7 +129,6 @@ class Embed:
             color=col
         )
 
-        # Requester
         if requester:
             embed.set_footer(
                 text=f"Requested by {requester.display_name}  •  {src}  •  384 kbps",
@@ -153,61 +140,31 @@ class Embed:
         if track.artwork:
             embed.set_thumbnail(url=track.artwork)
 
-        # Volume / queue info in one line
-        vol_icon = E.VOL_MUTE if player.volume == 0 else (E.VOL_LOW if player.volume < 50 else E.VOL_HIGH)
-        embed.add_field(
-            name=f"{E.QUEUE} Queue",
-            value=f"`{len(player.queue)}`",
-            inline=True
-        )
-        embed.add_field(
-            name=f"{vol_icon} Volume",
-            value=f"`{player.volume}%`",
-            inline=True
-        )
-        embed.add_field(
-            name=f"{E.QUALITY} Quality",
-            value="`Ultra HD`",
-            inline=True
-        )
-
+        vol = player.volume
+        vol_icon = E.VOL_MUTE if vol == 0 else (E.VOL_LOW if vol < 50 else E.VOL_HIGH)
+        embed.add_field(name=f"{E.QUEUE} Queue", value=f"`{len(player.queue)}`", inline=True)
+        embed.add_field(name=f"{vol_icon} Volume", value=f"`{vol}%`", inline=True)
+        embed.add_field(name=f"{E.QUALITY} Quality", value="`Ultra HD`", inline=True)
         return embed
 
     @staticmethod
     def success(title, description=None):
-        return discord.Embed(
-            title=f"{E.OK}  {title}",
-            description=description,
-            color=Colors.SUCCESS
-        )
+        return discord.Embed(title=f"{E.OK}  {title}", description=description, color=Colors.SUCCESS)
 
     @staticmethod
     def error(title, description=None):
-        return discord.Embed(
-            title=f"{E.NO}  {title}",
-            description=description,
-            color=Colors.ERROR
-        )
+        return discord.Embed(title=f"{E.NO}  {title}", description=description, color=Colors.ERROR)
 
     @staticmethod
     def warning(title, description=None):
-        return discord.Embed(
-            title=f"{E.WARN}  {title}",
-            description=description,
-            color=Colors.WARNING
-        )
+        return discord.Embed(title=f"{E.WARN}  {title}", description=description, color=Colors.WARNING)
 
     @staticmethod
     def info(title, description=None):
-        return discord.Embed(
-            title=f"{E.INFO}  {title}",
-            description=description,
-            color=Colors.INFO
-        )
+        return discord.Embed(title=f"{E.INFO}  {title}", description=description, color=Colors.INFO)
 
     @staticmethod
     def added(track, position, requester):
-        """Track added to queue"""
         dur = Embed._fmt_ms(track.length)
         embed = discord.Embed(
             title=f"{E.ADD}  Added to Queue",
@@ -220,10 +177,8 @@ class Embed:
         )
         if track.artwork:
             embed.set_thumbnail(url=track.artwork)
-        embed.set_footer(
-            text=f"Requested by {requester.display_name}",
-            icon_url=requester.display_avatar.url
-        )
+        embed.set_footer(text=f"Requested by {requester.display_name}",
+                         icon_url=requester.display_avatar.url)
         return embed
 
     @staticmethod
@@ -231,46 +186,31 @@ class Embed:
         dur = Embed._fmt_ms(total_ms)
         embed = discord.Embed(
             title=f"{E.NOTES}  Playlist Added",
-            description=(
-                f"**{name}**\n\n"
-                f"{E.BULLET} **{count}** tracks\n"
-                f"{E.TIMER} Total: `{dur}`"
-            ),
+            description=f"**{name}**\n\n{E.BULLET} **{count}** tracks\n{E.TIMER} Total: `{dur}`",
             color=Colors.MUSIC
         )
-        embed.set_footer(
-            text=f"Requested by {requester.display_name}",
-            icon_url=requester.display_avatar.url
-        )
+        embed.set_footer(text=f"Requested by {requester.display_name}",
+                         icon_url=requester.display_avatar.url)
         return embed
 
     @staticmethod
     def queue_list(player, page=1, per_page=10):
-        """Paginated queue"""
         tracks = list(player.queue)
         total = len(tracks)
         max_pages = max(1, (total + per_page - 1) // per_page)
         page = max(1, min(page, max_pages))
         start = (page - 1) * per_page
         chunk = tracks[start:start + per_page]
-
         total_ms = sum(t.length for t in tracks)
 
-        embed = discord.Embed(
-            title=f"{E.QUEUE}  Queue  •  Page {page}/{max_pages}",
-            color=Colors.PRIMARY
-        )
-
-        # Current track
+        embed = discord.Embed(title=f"{E.QUEUE}  Queue  •  Page {page}/{max_pages}",
+                              color=Colors.PRIMARY)
         if player.current:
             cur = player.current
             embed.description = (
-                f"**Now Playing**\n"
-                f"{E.PLAY} [{cur.title[:60]}]({cur.uri})\n"
-                f"{E.MIC} {cur.author[:40]}\n"
-                f"━━━━━━━━━━━━━━━━━━━━━━"
+                f"**Now Playing**\n{E.PLAY} [{cur.title[:60]}]({cur.uri})\n"
+                f"{E.MIC} {cur.author[:40]}\n━━━━━━━━━━━━━━━━━━━━━━"
             )
-
         for i, t in enumerate(chunk, start + 1):
             dur = Embed._fmt_ms(t.length)
             embed.add_field(
@@ -278,14 +218,10 @@ class Embed:
                 value=f"{E.MIC} {t.author[:35]}  •  `{dur}`",
                 inline=False
             )
-
         if total > per_page:
-            embed.set_footer(
-                text=f"Total {total} tracks  •  {Embed._fmt_ms(total_ms)}  •  Use x!queue <page>"
-            )
+            embed.set_footer(text=f"Total {total} tracks  •  {Embed._fmt_ms(total_ms)}  •  Use x!queue <page>")
         else:
             embed.set_footer(text=f"Total {total} tracks  •  {Embed._fmt_ms(total_ms)}")
-
         return embed
 
     @staticmethod
@@ -293,8 +229,7 @@ class Embed:
         embed = discord.Embed(
             title=f"{E.MUSIC_BOX}  Music Bot  —  Help",
             description=(
-                f"**Prefix:** `{prefix}`\n"
-                f"**Quality:** `384 kbps Ultra HD`\n\n"
+                f"**Prefix:** `{prefix}`\n**Quality:** `384 kbps Ultra HD`\n\n"
                 f"━━━━━━━━━━━━━━━━━━━━━━━━━\n"
                 f"**{E.PLAY}  Playback**\n"
                 f"`{prefix}play <song>`  •  `{prefix}pause`  •  `{prefix}resume`\n"
@@ -328,12 +263,10 @@ class Embed:
 
 
 # ═══════════════════════════════════════════════════════════
-# 🖼️ NOW-PLAYING IMAGE CARD GENERATOR
+# 🖼️ NOW-PLAYING IMAGE CARD
 # ═══════════════════════════════════════════════════════════
 
 class NowPlayingCard:
-    """Generates a beautiful now-playing card image"""
-
     WIDTH = 1000
     HEIGHT = 340
     BG = (24, 24, 30)
@@ -351,7 +284,6 @@ class NowPlayingCard:
 
     @staticmethod
     def _font(size, bold=False):
-        """Try multiple font paths, fall back to default"""
         paths = [
             "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
             "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
@@ -379,12 +311,10 @@ class NowPlayingCard:
             card = Image.new("RGB", (W, H), NowPlayingCard.BG)
             draw = ImageDraw.Draw(card)
 
-            # gradient overlay
             for i in range(H):
                 alpha = int(40 * (i / H))
                 draw.line([(0, i), (W, i)], fill=(24 + alpha, 24, 40 + alpha))
 
-            # ── Album art ──
             art_size = 240
             art_x, art_y = 30, (H - art_size) // 2
             if track.artwork:
@@ -392,23 +322,17 @@ class NowPlayingCard:
                     data = await NowPlayingCard.fetch_bytes(track.artwork)
                     art = Image.open(io.BytesIO(data)).convert("RGB")
                     art = ImageOps.fit(art, (art_size, art_size), Image.LANCZOS)
-                    # rounded corners
                     mask = Image.new("L", (art_size, art_size), 0)
                     mdraw = ImageDraw.Draw(mask)
                     mdraw.rounded_rectangle([0, 0, art_size, art_size], radius=18, fill=255)
                     card.paste(art, (art_x, art_y), mask)
                 except Exception:
-                    draw.rounded_rectangle(
-                        [art_x, art_y, art_x + art_size, art_y + art_size],
-                        radius=18, fill=(50, 50, 60)
-                    )
+                    draw.rounded_rectangle([art_x, art_y, art_x + art_size, art_y + art_size],
+                                            radius=18, fill=(50, 50, 60))
             else:
-                draw.rounded_rectangle(
-                    [art_x, art_y, art_x + art_size, art_y + art_size],
-                    radius=18, fill=(50, 50, 60)
-                )
+                draw.rounded_rectangle([art_x, art_y, art_x + art_size, art_y + art_size],
+                                        radius=18, fill=(50, 50, 60))
 
-            # ── Text ──
             text_x = art_x + art_size + 40
             text_max_w = W - text_x - 40
 
@@ -418,55 +342,42 @@ class NowPlayingCard:
             f_time = NowPlayingCard._font(20, bold=False)
 
             y = art_y + 10
-
-            # "NOW PLAYING" label
             draw.text((text_x, y), "NOW PLAYING", font=f_label, fill=(120, 130, 255))
             y += 34
 
-            # Title
             title = NowPlayingCard._truncate(track.title, f_title, text_max_w, draw)
             draw.text((text_x, y), title, font=f_title, fill=NowPlayingCard.TEXT)
             y += 52
 
-            # Artist
             artist = NowPlayingCard._truncate(track.author, f_artist, text_max_w, draw)
             draw.text((text_x, y), artist, font=f_artist, fill=NowPlayingCard.SUBTEXT)
             y += 55
 
-            # ── Progress bar ──
             bar_w = text_max_w
             bar_h = 10
             bar_y = y + 25
 
-            # track
-            draw.rounded_rectangle(
-                [text_x, bar_y, text_x + bar_w, bar_y + bar_h],
-                radius=5, fill=NowPlayingCard.BAR_BG
-            )
+            draw.rounded_rectangle([text_x, bar_y, text_x + bar_w, bar_y + bar_h],
+                                    radius=5, fill=NowPlayingCard.BAR_BG)
 
             pos = max(0, player.position)
             length = max(1, track.length)
             pct = min(1.0, pos / length)
             fill_w = int(bar_w * pct)
             if fill_w > 0:
-                draw.rounded_rectangle(
-                    [text_x, bar_y, text_x + fill_w, bar_y + bar_h],
-                    radius=5, fill=NowPlayingCard.BAR_FG
-                )
+                draw.rounded_rectangle([text_x, bar_y, text_x + fill_w, bar_y + bar_h],
+                                        radius=5, fill=NowPlayingCard.BAR_FG)
 
-            # times
             cur_t = Embed._fmt_ms(pos)
             dur_t = Embed._fmt_ms(length)
             draw.text((text_x, bar_y + 20), cur_t, font=f_time, fill=NowPlayingCard.SUBTEXT)
             tw = draw.textlength(dur_t, font=f_time)
             draw.text((text_x + bar_w - tw, bar_y + 20), dur_t, font=f_time, fill=NowPlayingCard.SUBTEXT)
 
-            # ── Footer: requester ──
             if requester:
                 footer = f"Requested by {requester.display_name}"
                 draw.text((text_x, H - 40), footer, font=f_time, fill=(120, 120, 140))
 
-            # ── Status badge (playing / paused) ──
             status = "PAUSED" if player.paused else "PLAYING"
             badge_color = (235, 69, 158) if player.paused else (88, 200, 120)
             draw.text((W - 130, 20), status, font=f_label, fill=badge_color)
@@ -493,26 +404,16 @@ class FilterSelectView(View):
     @discord.ui.select(
         placeholder="🎛️ Choose an audio filter…",
         options=[
-            discord.SelectOption(label="Nightcore", value="nightcore",
-                                 description="Increase pitch & speed", emoji="🌙"),
-            discord.SelectOption(label="Bass Boost", value="bassboost",
-                                 description="Deep, punchy bass", emoji="🔊"),
-            discord.SelectOption(label="Vaporwave", value="vaporwave",
-                                 description="Slow, dreamy vibe", emoji="🌴"),
-            discord.SelectOption(label="Karaoke", value="karaoke",
-                                 description="Remove vocals", emoji="🎤"),
-            discord.SelectOption(label="Tremolo", value="tremolo",
-                                 description="Amplitude modulation", emoji="〰️"),
-            discord.SelectOption(label="Vibrato", value="vibrato",
-                                 description="Pitch modulation", emoji="🎶"),
-            discord.SelectOption(label="Rotation", value="rotation",
-                                 description="3D surround effect", emoji="🔄"),
-            discord.SelectOption(label="Distortion", value="distortion",
-                                 description="Gritty, aggressive", emoji="🎸"),
-            discord.SelectOption(label="8D Audio", value="8d",
-                                 description="Immersive 8D", emoji="🎧"),
-            discord.SelectOption(label="Clear All", value="clear",
-                                 description="Remove all filters", emoji="🧹"),
+            discord.SelectOption(label="Nightcore", value="nightcore", description="Increase pitch & speed", emoji="🌙"),
+            discord.SelectOption(label="Bass Boost", value="bassboost", description="Deep, punchy bass", emoji="🔊"),
+            discord.SelectOption(label="Vaporwave", value="vaporwave", description="Slow, dreamy vibe", emoji="🌴"),
+            discord.SelectOption(label="Karaoke", value="karaoke", description="Remove vocals", emoji="🎤"),
+            discord.SelectOption(label="Tremolo", value="tremolo", description="Amplitude modulation", emoji="〰️"),
+            discord.SelectOption(label="Vibrato", value="vibrato", description="Pitch modulation", emoji="🎶"),
+            discord.SelectOption(label="Rotation", value="rotation", description="3D surround effect", emoji="🔄"),
+            discord.SelectOption(label="Distortion", value="distortion", description="Gritty, aggressive", emoji="🎸"),
+            discord.SelectOption(label="8D Audio", value="8d", description="Immersive 8D", emoji="🎧"),
+            discord.SelectOption(label="Clear All", value="clear", description="Remove all filters", emoji="🧹"),
         ]
     )
     async def pick(self, interaction: discord.Interaction, select: Select):
@@ -520,56 +421,57 @@ class FilterSelectView(View):
         filters = wavelink.Filters()
         desc = ""
 
-        if name == "nightcore":
-            filters.timescale.set(pitch=1.2, speed=1.2, rate=1)
-            desc = "🌙 Nightcore — pitch and speed boosted"
-        elif name == "bassboost":
-            filters.equalizer.set(bands=[
-                {"band": 0, "gain": 0.9}, {"band": 1, "gain": 0.7},
-                {"band": 2, "gain": 0.5}, {"band": 3, "gain": 0.3},
-                {"band": 4, "gain": 0.1}, {"band": 5, "gain": 0.0},
-            ])
-            desc = "🔊 Bass Boost — deep, punchy low-end"
-        elif name == "vaporwave":
-            filters.timescale.set(rate=0.8, pitch=0.9)
-            desc = "🌴 Vaporwave — slowed and pitched down"
-        elif name == "karaoke":
-            filters.karaoke.set(level=1.0, mono_level=1.0, filter_band=220.0, filter_width=100.0)
-            desc = "🎤 Karaoke — vocals removed"
-        elif name == "tremolo":
-            filters.tremolo.set(depth=0.5, frequency=10.0)
-            desc = "〰️ Tremolo — pulsing amplitude"
-        elif name == "vibrato":
-            filters.vibrato.set(depth=0.5, frequency=5.0)
-            desc = "🎶 Vibrato — pitch wobble"
-        elif name == "rotation":
-            filters.rotation.set(rotation_hz=0.2)
-            desc = "🔄 Rotation — 3D audio spin"
-        elif name == "distortion":
-            filters.distortion.set(sin_offset=0.0, sin_scale=1.0, cos_offset=0.0,
-                                    cos_scale=1.0, tan_offset=0.0, tan_scale=1.0,
-                                    offset=0.0, scale=1.0)
-            desc = "🎸 Distortion — gritty and loud"
-        elif name == "8d":
-            filters.rotation.set(rotation_hz=0.15)
-            filters.tremolo.set(depth=0.3, frequency=4.0)
-            desc = "🎧 8D Audio — immersive rotation"
-        elif name == "clear":
-            filters = wavelink.Filters()
-            desc = "🧹 All filters cleared"
+        try:
+            if name == "nightcore":
+                filters.timescale.set(pitch=1.2, speed=1.2, rate=1)
+                desc = "🌙 Nightcore — pitch and speed boosted"
+            elif name == "bassboost":
+                filters.equalizer.set(bands=[
+                    {"band": 0, "gain": 0.9}, {"band": 1, "gain": 0.7},
+                    {"band": 2, "gain": 0.5}, {"band": 3, "gain": 0.3},
+                    {"band": 4, "gain": 0.1}, {"band": 5, "gain": 0.0},
+                ])
+                desc = "🔊 Bass Boost — deep, punchy low-end"
+            elif name == "vaporwave":
+                filters.timescale.set(rate=0.8, pitch=0.9)
+                desc = "🌴 Vaporwave — slowed and pitched down"
+            elif name == "karaoke":
+                filters.karaoke.set(level=1.0, mono_level=1.0, filter_band=220.0, filter_width=100.0)
+                desc = "🎤 Karaoke — vocals removed"
+            elif name == "tremolo":
+                filters.tremolo.set(depth=0.5, frequency=10.0)
+                desc = "〰️ Tremolo — pulsing amplitude"
+            elif name == "vibrato":
+                filters.vibrato.set(depth=0.5, frequency=5.0)
+                desc = "🎶 Vibrato — pitch wobble"
+            elif name == "rotation":
+                filters.rotation.set(rotation_hz=0.2)
+                desc = "🔄 Rotation — 3D audio spin"
+            elif name == "distortion":
+                filters.distortion.set(sin_offset=0.0, sin_scale=1.0, cos_offset=0.0,
+                                        cos_scale=1.0, tan_offset=0.0, tan_scale=1.0,
+                                        offset=0.0, scale=1.0)
+                desc = "🎸 Distortion — gritty and loud"
+            elif name == "8d":
+                filters.rotation.set(rotation_hz=0.15)
+                filters.tremolo.set(depth=0.3, frequency=4.0)
+                desc = "🎧 8D Audio — immersive rotation"
+            elif name == "clear":
+                filters = wavelink.Filters()
+                desc = "🧹 All filters cleared"
 
-        await self.player.set_filters(filters)
+            await self.player.set_filters(filters)
+        except Exception as e:
+            print(f"Filter error: {e}")
+            return await interaction.response.send_message(
+                embed=Embed.error("Filter Error", str(e)), ephemeral=True)
 
-        embed = discord.Embed(
-            title=f"{E.SPARKLE}  Filter Applied",
-            description=desc,
-            color=Colors.ACCENT
-        )
+        embed = discord.Embed(title=f"{E.SPARKLE}  Filter Applied", description=desc, color=Colors.ACCENT)
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
 # ═══════════════════════════════════════════════════════════
-# 🎛️ MUSIC CONTROL VIEW — Beautiful, minimal, reliable
+# 🎛️ MUSIC CONTROL VIEW
 # ═══════════════════════════════════════════════════════════
 
 class MusicControlView(View):
@@ -580,35 +482,20 @@ class MusicControlView(View):
         self._build()
 
     def _build(self):
-        # Row 0 — Playback
-        self.add_item(Button(emoji=E.PREV, style=discord.ButtonStyle.secondary,
-                             custom_id="mc_prev", row=0))
-        self.add_item(Button(emoji=E.PAUSE, style=discord.ButtonStyle.primary,
-                             custom_id="mc_pr", row=0))
-        self.add_item(Button(emoji=E.STOP, style=discord.ButtonStyle.danger,
-                             custom_id="mc_stop", row=0))
-        self.add_item(Button(emoji=E.SKIP, style=discord.ButtonStyle.secondary,
-                             custom_id="mc_skip", row=0))
-        self.add_item(Button(emoji=E.REPLAY, style=discord.ButtonStyle.secondary,
-                             custom_id="mc_replay", row=0))
+        self.add_item(Button(emoji=E.PREV, style=discord.ButtonStyle.secondary, custom_id="mc_prev", row=0))
+        self.add_item(Button(emoji=E.PAUSE, style=discord.ButtonStyle.primary, custom_id="mc_pr", row=0))
+        self.add_item(Button(emoji=E.STOP, style=discord.ButtonStyle.danger, custom_id="mc_stop", row=0))
+        self.add_item(Button(emoji=E.SKIP, style=discord.ButtonStyle.secondary, custom_id="mc_skip", row=0))
+        self.add_item(Button(emoji=E.REPLAY, style=discord.ButtonStyle.secondary, custom_id="mc_replay", row=0))
 
-        # Row 1 — Volume
-        self.add_item(Button(emoji=E.VOL_MUTE, style=discord.ButtonStyle.secondary,
-                             custom_id="mc_mute", row=1))
-        self.add_item(Button(emoji=E.VOL_LOW, style=discord.ButtonStyle.primary,
-                             custom_id="mc_vd", row=1))
-        self.add_item(Button(emoji=E.VOL_HIGH, style=discord.ButtonStyle.primary,
-                             custom_id="mc_vu", row=1))
+        self.add_item(Button(emoji=E.VOL_MUTE, style=discord.ButtonStyle.secondary, custom_id="mc_mute", row=1))
+        self.add_item(Button(emoji=E.VOL_LOW, style=discord.ButtonStyle.primary, custom_id="mc_vd", row=1))
+        self.add_item(Button(emoji=E.VOL_HIGH, style=discord.ButtonStyle.primary, custom_id="mc_vu", row=1))
 
-        # Row 2 — Queue / Filters / Loop / Shuffle
-        self.add_item(Button(emoji=E.QUEUE, style=discord.ButtonStyle.secondary,
-                             custom_id="mc_q", row=2))
-        self.add_item(Button(emoji=E.SHUFFLE, style=discord.ButtonStyle.secondary,
-                             custom_id="mc_shuffle", row=2))
-        self.add_item(Button(emoji=E.LOOP, style=discord.ButtonStyle.success,
-                             custom_id="mc_loop", row=2))
-        self.add_item(Button(emoji=E.FILTER, style=discord.ButtonStyle.success,
-                             custom_id="mc_filter", row=2))
+        self.add_item(Button(emoji=E.QUEUE, style=discord.ButtonStyle.secondary, custom_id="mc_q", row=2))
+        self.add_item(Button(emoji=E.SHUFFLE, style=discord.ButtonStyle.secondary, custom_id="mc_shuffle", row=2))
+        self.add_item(Button(emoji=E.LOOP, style=discord.ButtonStyle.success, custom_id="mc_loop", row=2))
+        self.add_item(Button(emoji=E.FILTER, style=discord.ButtonStyle.success, custom_id="mc_filter", row=2))
 
         for child in self.children:
             if isinstance(child, Button):
@@ -618,13 +505,11 @@ class MusicControlView(View):
         vc = interaction.guild.voice_client
         if not vc:
             await interaction.response.send_message(
-                embed=Embed.error("Not Connected", "I'm not in a voice channel."),
-                ephemeral=True)
+                embed=Embed.error("Not Connected", "I'm not in a voice channel."), ephemeral=True)
             return False
         if interaction.user not in vc.channel.members:
             await interaction.response.send_message(
-                embed=Embed.error("Wrong Channel", "Join my voice channel to control playback."),
-                ephemeral=True)
+                embed=Embed.error("Wrong Channel", "Join my voice channel to control playback."), ephemeral=True)
             return False
         return True
 
@@ -657,7 +542,7 @@ class MusicControlView(View):
         if len(hist) < 2:
             return await i.response.send_message(
                 embed=Embed.error("No History", "Nothing before this track."), ephemeral=True)
-        hist.pop()  # drop current
+        hist.pop()
         prev = hist[-1]
         await vc.play(prev)
         await i.response.send_message(
@@ -666,8 +551,7 @@ class MusicControlView(View):
     async def _pr(self, i):
         vc = i.guild.voice_client
         if not vc or (not vc.playing and not vc.paused):
-            return await i.response.send_message(
-                embed=Embed.error("Nothing Playing"), ephemeral=True)
+            return await i.response.send_message(embed=Embed.error("Nothing Playing"), ephemeral=True)
         if vc.paused:
             await vc.pause(False)
             await i.response.send_message(
@@ -693,8 +577,7 @@ class MusicControlView(View):
     async def _skip(self, i):
         vc = i.guild.voice_client
         if not vc or not vc.playing:
-            return await i.response.send_message(
-                embed=Embed.error("Nothing Playing"), ephemeral=True)
+            return await i.response.send_message(embed=Embed.error("Nothing Playing"), ephemeral=True)
         await vc.stop()
         await i.response.send_message(
             embed=Embed.success("Skipped", f"{E.SKIP} Moved to next track"), ephemeral=True)
@@ -702,8 +585,7 @@ class MusicControlView(View):
     async def _replay(self, i):
         vc = i.guild.voice_client
         if not vc or not vc.playing:
-            return await i.response.send_message(
-                embed=Embed.error("Nothing Playing"), ephemeral=True)
+            return await i.response.send_message(embed=Embed.error("Nothing Playing"), ephemeral=True)
         await vc.seek(0)
         await i.response.send_message(
             embed=Embed.success("Replaying", f"{E.REPLAY} Restarted current track"), ephemeral=True)
@@ -849,8 +731,6 @@ print("✅ Spotify initialized" if spotify_api else "⚠️ Spotify not configur
 active_player_messages = {}
 track_histories = {}
 user_playlists = {}
-blacklist_check = lambda: commands.check(lambda ctx: True)
-ignore_check = lambda: commands.check(lambda ctx: True)
 
 
 # ═══════════════════════════════════════════════════════════
@@ -900,8 +780,9 @@ class Music(commands.Cog):
                 await self.bot.music_db.register_voice_channel(
                     ctx.author.voice.channel.id, ctx.guild.id, ctx.author.voice.channel.name)
                 src = "youtube"
-                if "spotify" in track.uri.lower(): src = "spotify"
-                elif "soundcloud" in track.uri.lower(): src = "soundcloud"
+                uri = (track.uri or "").lower()
+                if "spotify" in uri: src = "spotify"
+                elif "soundcloud" in uri: src = "soundcloud"
                 await self.bot.music_db.log_music_play(
                     server_id=ctx.guild.id,
                     channel_id=ctx.author.voice.channel.id,
@@ -929,7 +810,6 @@ class Music(commands.Cog):
 
             await self.log_play(ctx, track)
 
-            # Generate and send the image card separately (auto-deletes after 10s)
             try:
                 card_file = await NowPlayingCard.generate(track, player, ctx.author)
                 if card_file:
@@ -962,7 +842,6 @@ class Music(commands.Cog):
             return await ctx.send(embed=Embed.error(
                 "Wrong Channel", f"Join {vc.channel.mention} to control music."))
 
-        # Spotify
         if spotify_api and re.match(SPOTIFY_TRACK_REGEX, query):
             return await self._spotify(ctx, vc, query, "track")
         if spotify_api and re.match(SPOTIFY_PLAYLIST_REGEX, query):
@@ -984,30 +863,35 @@ class Music(commands.Cog):
             return await search_msg.edit(embed=Embed.error(
                 "No Results", f"Nothing found for `{query}`."))
 
+        was_playing = vc.playing or vc.paused
+
         if isinstance(tracks, wavelink.Playlist):
-            await vc.queue.put_wait(tracks.tracks)
+            for t in tracks.tracks:
+                vc.queue.put(t)
             total_ms = sum(t.length for t in tracks.tracks)
             embed = Embed.playlist_added(tracks.name, len(tracks.tracks), total_ms, ctx.author)
             await search_msg.edit(embed=embed)
             asyncio.create_task(self.auto_delete(search_msg, 8))
         else:
             track = tracks[0]
-            pos = len(vc.queue) + (1 if vc.playing else 0)
-            await vc.queue.put_wait(track)
-            if pos == 0:
-                # Will be played immediately
-                asyncio.create_task(self.auto_delete(search_msg, 3))
-            else:
+            vc.queue.put(track)
+            if was_playing:
+                pos = len(vc.queue)
                 await search_msg.edit(embed=Embed.added(track, pos, ctx.author))
                 asyncio.create_task(self.auto_delete(search_msg, 8))
+            else:
+                asyncio.create_task(self.auto_delete(search_msg, 3))
 
-        if not vc.playing and not vc.queue.is_empty:
-            nt = await vc.queue.get_wait()
+        # If nothing playing, pop next and play
+        if not was_playing and not vc.queue.is_empty:
+            nt = vc.queue.get()
             await vc.play(nt)
             await self.display_player(vc, nt, ctx)
 
     async def _spotify(self, ctx, vc, link, kind):
         try:
+            was_playing = vc.playing or vc.paused
+
             if kind == "track":
                 tid = re.search(SPOTIFY_TRACK_REGEX, link).group(1)
                 info = await spotify_api.get_track(tid)
@@ -1017,9 +901,9 @@ class Music(commands.Cog):
                 if not results:
                     return await ctx.send(embed=Embed.error("Unavailable", "Track not on YouTube."))
                 track = results[0] if not isinstance(results, wavelink.Playlist) else results.tracks[0]
-                await vc.queue.put_wait(track)
-                if not vc.playing:
-                    nt = await vc.queue.get_wait()
+                vc.queue.put(track)
+                if not was_playing:
+                    nt = vc.queue.get()
                     await vc.play(nt)
                     await self.display_player(vc, nt, ctx)
                 else:
@@ -1051,7 +935,7 @@ class Music(commands.Cog):
                         res = await wavelink.Playable.search(f"{t} {a}")
                         if res:
                             tr = res[0] if not isinstance(res, wavelink.Playlist) else res.tracks[0]
-                            await vc.queue.put_wait(tr)
+                            vc.queue.put(tr)
                             added += 1
                             total_ms += tr.length
                     except Exception:
@@ -1060,8 +944,8 @@ class Music(commands.Cog):
                 await msg.edit(embed=Embed.playlist_added(name, added, total_ms, ctx.author))
                 asyncio.create_task(self.auto_delete(msg, 8))
 
-                if not vc.playing and not vc.queue.is_empty:
-                    nt = await vc.queue.get_wait()
+                if not was_playing and not vc.queue.is_empty:
+                    nt = vc.queue.get()
                     await vc.play(nt)
                     await self.display_player(vc, nt, ctx)
         except Exception as e:
@@ -1248,7 +1132,7 @@ class Music(commands.Cog):
                 r = await wavelink.Playable.search(random.choice(queries))
                 if r:
                     tr = r[0] if not isinstance(r, wavelink.Playlist) else r.tracks[0]
-                    await vc.queue.put_wait(tr)
+                    vc.queue.put(tr)
                     added += 1
             except Exception:
                 continue
@@ -1259,7 +1143,7 @@ class Music(commands.Cog):
             f"Stop with `x!stop`"))
 
         if not vc.playing and not vc.queue.is_empty:
-            nt = await vc.queue.get_wait()
+            nt = vc.queue.get()
             await vc.play(nt)
 
     @commands.command(name="filter")
@@ -1341,6 +1225,7 @@ class Music(commands.Cog):
         vc = ctx.voice_client or await ctx.author.voice.channel.connect(cls=wavelink.Player)
         vc.ctx = ctx
         await vc.set_volume(100)
+        was_playing = vc.playing or vc.paused
         msg = await ctx.send(embed=discord.Embed(
             title=f"{E.LOAD}  Loading Playlist…",
             description=f"**{name}**", color=Colors.INFO))
@@ -1351,15 +1236,15 @@ class Music(commands.Cog):
                 r = await wavelink.Playable.search(e["uri"])
                 if r:
                     tr = r[0] if not isinstance(r, wavelink.Playlist) else r.tracks[0]
-                    await vc.queue.put_wait(tr)
+                    vc.queue.put(tr)
                     loaded += 1
                     total_ms += tr.length
             except Exception:
                 continue
         await msg.edit(embed=Embed.playlist_added(name, loaded, total_ms, ctx.author))
         asyncio.create_task(self.auto_delete(msg, 8))
-        if not vc.playing and not vc.queue.is_empty:
-            nt = await vc.queue.get_wait()
+        if not was_playing and not vc.queue.is_empty:
+            nt = vc.queue.get()
             await vc.play(nt)
             await self.display_player(vc, nt, ctx)
 
@@ -1378,10 +1263,8 @@ class Music(commands.Cog):
             color=Colors.INFO)
         for i, t in enumerate(top, 1):
             d = Embed._fmt_ms(t.length)
-            embed.add_field(
-                name=f"`{i}.` {t.title[:55]}",
-                value=f"{E.MIC} {t.author[:40]}  •  `{d}`",
-                inline=False)
+            embed.add_field(name=f"`{i}.` {t.title[:55]}",
+                            value=f"{E.MIC} {t.author[:40]}  •  `{d}`", inline=False)
         embed.set_footer(text="Use x!play <song name> to play")
         await ctx.send(embed=embed)
 
@@ -1411,7 +1294,7 @@ class Music(commands.Cog):
                     r = await wavelink.Playable.search(random.choice(queries))
                     if r:
                         tr = r[0] if not isinstance(r, wavelink.Playlist) else r.tracks[0]
-                        await player.queue.put_wait(tr)
+                        player.queue.put(tr)
                 except Exception:
                     continue
 
@@ -1425,7 +1308,7 @@ class Music(commands.Cog):
                     except Exception: pass
 
         if not player.queue.is_empty:
-            nxt = await player.queue.get_wait()
+            nxt = player.queue.get()
             await player.play(nxt)
             if hasattr(player, "ctx") and player.ctx:
                 cog = player.client.get_cog("Music")
