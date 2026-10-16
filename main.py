@@ -17,7 +17,7 @@ for pkg in ["discord.py", "wavelink", "Pillow", "aiohttp", "aiosqlite"]:
         install_package(pkg)
 
 import discord
-from discord.ext import commands, tasks
+from discord.ext import commands
 from discord.ui import Button, View, Select
 import wavelink
 import aiohttp
@@ -27,7 +27,8 @@ import re
 import json
 import random
 import io
-from PIL import Image, ImageDraw, ImageFont, ImageFilter, ImageOps
+import traceback
+from PIL import Image, ImageDraw, ImageFont, ImageOps
 
 try:
     from music_database import MusicDatabase
@@ -195,6 +196,7 @@ class Embed:
 
     @staticmethod
     def queue_list(player, page=1, per_page=10):
+        """Paginated queue — always shows now playing, handles empty queue gracefully"""
         tracks = list(player.queue)
         total = len(tracks)
         max_pages = max(1, (total + per_page - 1) // per_page)
@@ -205,23 +207,36 @@ class Embed:
 
         embed = discord.Embed(title=f"{E.QUEUE}  Queue  •  Page {page}/{max_pages}",
                               color=Colors.PRIMARY)
-        if player.current:
-            cur = player.current
+
+        # Always show current track (or "Nothing playing")
+        cur = getattr(player, "current", None)
+        if cur:
             embed.description = (
-                f"**Now Playing**\n{E.PLAY} [{cur.title[:60]}]({cur.uri})\n"
-                f"{E.MIC} {cur.author[:40]}\n━━━━━━━━━━━━━━━━━━━━━━"
+                f"**{E.PLAY} Now Playing**\n"
+                f"[{cur.title[:60]}]({cur.uri})\n"
+                f"{E.MIC} {cur.author[:40]}\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━"
             )
-        for i, t in enumerate(chunk, start + 1):
-            dur = Embed._fmt_ms(t.length)
-            embed.add_field(
-                name=f"`{i:>2}.` {t.title[:50]}",
-                value=f"{E.MIC} {t.author[:35]}  •  `{dur}`",
-                inline=False
-            )
-        if total > per_page:
-            embed.set_footer(text=f"Total {total} tracks  •  {Embed._fmt_ms(total_ms)}  •  Use x!queue <page>")
         else:
-            embed.set_footer(text=f"Total {total} tracks  •  {Embed._fmt_ms(total_ms)}")
+            embed.description = f"**{E.PLAY} Now Playing**\n*Nothing playing*"
+
+        if total == 0:
+            embed.add_field(name=f"{E.LIST} Up Next", value="*Queue is empty*", inline=False)
+        else:
+            for i, t in enumerate(chunk, start + 1):
+                dur = Embed._fmt_ms(t.length)
+                embed.add_field(
+                    name=f"`{i:>2}.` {t.title[:50]}",
+                    value=f"{E.MIC} {t.author[:35]}  •  `{dur}`",
+                    inline=False
+                )
+
+        footer = f"Total {total} tracks"
+        if total:
+            footer += f"  •  {Embed._fmt_ms(total_ms)}"
+        if total > per_page:
+            footer += "  •  Use x!queue <page>"
+        embed.set_footer(text=footer)
         return embed
 
     @staticmethod
@@ -471,7 +486,7 @@ class FilterSelectView(View):
 
 
 # ═══════════════════════════════════════════════════════════
-# 🎛️ MUSIC CONTROL VIEW
+# 🎛️ MUSIC CONTROL VIEW — FIXED: per-button callbacks
 # ═══════════════════════════════════════════════════════════
 
 class MusicControlView(View):
@@ -479,27 +494,36 @@ class MusicControlView(View):
         super().__init__(timeout=None)
         self.player = player
         self.ctx = ctx
-        self._build()
 
-    def _build(self):
-        self.add_item(Button(emoji=E.PREV, style=discord.ButtonStyle.secondary, custom_id="mc_prev", row=0))
-        self.add_item(Button(emoji=E.PAUSE, style=discord.ButtonStyle.primary, custom_id="mc_pr", row=0))
-        self.add_item(Button(emoji=E.STOP, style=discord.ButtonStyle.danger, custom_id="mc_stop", row=0))
-        self.add_item(Button(emoji=E.SKIP, style=discord.ButtonStyle.secondary, custom_id="mc_skip", row=0))
-        self.add_item(Button(emoji=E.REPLAY, style=discord.ButtonStyle.secondary, custom_id="mc_replay", row=0))
+        # Row 0 — Playback
+        self.add_item(Button(emoji=E.PREV, style=discord.ButtonStyle.secondary,
+                             row=0, callback=self._prev))
+        self.add_item(Button(emoji=E.PAUSE, style=discord.ButtonStyle.primary,
+                             row=0, callback=self._pr))
+        self.add_item(Button(emoji=E.STOP, style=discord.ButtonStyle.danger,
+                             row=0, callback=self._stop))
+        self.add_item(Button(emoji=E.SKIP, style=discord.ButtonStyle.secondary,
+                             row=0, callback=self._skip))
+        self.add_item(Button(emoji=E.REPLAY, style=discord.ButtonStyle.secondary,
+                             row=0, callback=self._replay))
 
-        self.add_item(Button(emoji=E.VOL_MUTE, style=discord.ButtonStyle.secondary, custom_id="mc_mute", row=1))
-        self.add_item(Button(emoji=E.VOL_LOW, style=discord.ButtonStyle.primary, custom_id="mc_vd", row=1))
-        self.add_item(Button(emoji=E.VOL_HIGH, style=discord.ButtonStyle.primary, custom_id="mc_vu", row=1))
+        # Row 1 — Volume
+        self.add_item(Button(emoji=E.VOL_MUTE, style=discord.ButtonStyle.secondary,
+                             row=1, callback=self._mute))
+        self.add_item(Button(emoji=E.VOL_LOW, style=discord.ButtonStyle.primary,
+                             row=1, callback=self._vd))
+        self.add_item(Button(emoji=E.VOL_HIGH, style=discord.ButtonStyle.primary,
+                             row=1, callback=self._vu))
 
-        self.add_item(Button(emoji=E.QUEUE, style=discord.ButtonStyle.secondary, custom_id="mc_q", row=2))
-        self.add_item(Button(emoji=E.SHUFFLE, style=discord.ButtonStyle.secondary, custom_id="mc_shuffle", row=2))
-        self.add_item(Button(emoji=E.LOOP, style=discord.ButtonStyle.success, custom_id="mc_loop", row=2))
-        self.add_item(Button(emoji=E.FILTER, style=discord.ButtonStyle.success, custom_id="mc_filter", row=2))
-
-        for child in self.children:
-            if isinstance(child, Button):
-                child.callback = self._dispatch
+        # Row 2 — Queue / Shuffle / Loop / Filter
+        self.add_item(Button(emoji=E.QUEUE, style=discord.ButtonStyle.secondary,
+                             row=2, callback=self._q))
+        self.add_item(Button(emoji=E.SHUFFLE, style=discord.ButtonStyle.secondary,
+                             row=2, callback=self._shuffle))
+        self.add_item(Button(emoji=E.LOOP, style=discord.ButtonStyle.success,
+                             row=2, callback=self._loop))
+        self.add_item(Button(emoji=E.FILTER, style=discord.ButtonStyle.success,
+                             row=2, callback=self._filter))
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         vc = interaction.guild.voice_client
@@ -513,155 +537,194 @@ class MusicControlView(View):
             return False
         return True
 
-    async def _dispatch(self, interaction: discord.Interaction):
-        cid = interaction.data["custom_id"].replace("mc_", "")
-        handlers = {
-            "prev": self._prev, "pr": self._pr, "stop": self._stop,
-            "skip": self._skip, "replay": self._replay, "mute": self._mute,
-            "vd": self._vd, "vu": self._vu, "q": self._q,
-            "shuffle": self._shuffle, "loop": self._loop, "filter": self._filter,
-        }
-        h = handlers.get(cid)
-        if not h:
-            if not interaction.response.is_done():
-                await interaction.response.send_message("Unknown.", ephemeral=True)
-            return
+    # ───── Playback ─────
+    async def _prev(self, i: discord.Interaction):
         try:
-            await h(interaction)
+            vc = i.guild.voice_client
+            hist = track_histories.get(i.guild.id, [])
+            if len(hist) < 2:
+                return await i.response.send_message(
+                    embed=Embed.error("No History", "Nothing before this track."), ephemeral=True)
+            hist.pop()
+            prev = hist[-1]
+            await i.response.send_message(
+                embed=Embed.success("Previous", f"**{prev.title[:60]}**"), ephemeral=True)
+            await vc.play(prev)
         except Exception as e:
-            print(f"[Button:{cid}] {e}")
-            if not interaction.response.is_done():
+            print(f"_prev error: {e}")
+            traceback.print_exc()
+
+    async def _pr(self, i: discord.Interaction):
+        try:
+            vc = i.guild.voice_client
+            if not vc or (not vc.playing and not vc.paused):
+                return await i.response.send_message(embed=Embed.error("Nothing Playing"), ephemeral=True)
+            if vc.paused:
+                await vc.pause(False)
+                await i.response.send_message(
+                    embed=Embed.success("Resumed", f"{E.PLAY} Playback resumed"), ephemeral=True)
+            else:
+                await vc.pause(True)
+                await i.response.send_message(
+                    embed=Embed.warning("Paused", f"{E.PAUSE} Playback paused"), ephemeral=True)
+        except Exception as e:
+            print(f"_pr error: {e}")
+            traceback.print_exc()
+
+    async def _stop(self, i: discord.Interaction):
+        try:
+            vc = i.guild.voice_client
+            gid = i.guild.id
+            msg = active_player_messages.pop(gid, None)
+            if msg:
+                try: await msg.delete()
+                except Exception: pass
+            await i.response.send_message(
+                embed=Embed.success("Stopped", "Playback stopped and disconnected."), ephemeral=True)
+            if vc:
                 try:
-                    await interaction.response.send_message(f"❌ {e}", ephemeral=True)
+                    vc.queue.clear()
+                    await vc.disconnect()
+                except Exception as e:
+                    print(f"disconnect error: {e}")
+        except Exception as e:
+            print(f"_stop error: {e}")
+            traceback.print_exc()
+
+    async def _skip(self, i: discord.Interaction):
+        try:
+            vc = i.guild.voice_client
+            if not vc:
+                return await i.response.send_message(embed=Embed.error("Not Connected"), ephemeral=True)
+            if not (vc.playing or vc.paused):
+                return await i.response.send_message(embed=Embed.error("Nothing Playing"), ephemeral=True)
+            # Acknowledge FIRST — vc.stop() triggers track_end which deletes this message
+            await i.response.send_message(
+                embed=Embed.success("Skipped", f"{E.SKIP} Moving to next track"), ephemeral=True)
+            await vc.stop()
+        except Exception as e:
+            print(f"_skip error: {e}")
+            traceback.print_exc()
+
+    async def _replay(self, i: discord.Interaction):
+        try:
+            vc = i.guild.voice_client
+            if not vc or not (vc.playing or vc.paused):
+                return await i.response.send_message(embed=Embed.error("Nothing Playing"), ephemeral=True)
+            await vc.seek(0)
+            await i.response.send_message(
+                embed=Embed.success("Replaying", f"{E.REPLAY} Restarted current track"), ephemeral=True)
+        except Exception as e:
+            print(f"_replay error: {e}")
+            traceback.print_exc()
+
+    # ───── Volume ─────
+    async def _mute(self, i: discord.Interaction):
+        try:
+            vc = i.guild.voice_client
+            if not vc:
+                return await i.response.send_message(embed=Embed.error("Not Connected"), ephemeral=True)
+            if not hasattr(vc, "_pmv"):
+                vc._pmv = vc.volume
+                await vc.set_volume(0)
+                await i.response.send_message(embed=Embed.success("Muted", f"{E.VOL_MUTE}"), ephemeral=True)
+            else:
+                await vc.set_volume(vc._pmv)
+                delattr(vc, "_pmv")
+                await i.response.send_message(embed=Embed.success("Unmuted", f"{E.VOL_HIGH}"), ephemeral=True)
+        except Exception as e:
+            print(f"_mute error: {e}")
+            traceback.print_exc()
+
+    async def _vd(self, i: discord.Interaction):
+        try:
+            vc = i.guild.voice_client
+            if not vc:
+                return await i.response.send_message(embed=Embed.error("Not Connected"), ephemeral=True)
+            new = max(0, vc.volume - 20)
+            await vc.set_volume(new)
+            await i.response.send_message(
+                embed=Embed.success("Volume", f"{E.VOL_LOW} `{vc.volume}%`"), ephemeral=True)
+        except Exception as e:
+            print(f"_vd error: {e}")
+            traceback.print_exc()
+
+    async def _vu(self, i: discord.Interaction):
+        try:
+            vc = i.guild.voice_client
+            if not vc:
+                return await i.response.send_message(embed=Embed.error("Not Connected"), ephemeral=True)
+            new = min(200, vc.volume + 20)
+            await vc.set_volume(new)
+            await i.response.send_message(
+                embed=Embed.success("Volume", f"{E.VOL_HIGH} `{vc.volume}%`"), ephemeral=True)
+        except Exception as e:
+            print(f"_vu error: {e}")
+            traceback.print_exc()
+
+    # ───── Queue / Shuffle / Loop / Filter ─────
+    async def _q(self, i: discord.Interaction):
+        try:
+            vc = i.guild.voice_client
+            if not vc:
+                return await i.response.send_message(embed=Embed.error("Not Connected"), ephemeral=True)
+            await i.response.send_message(embed=Embed.queue_list(vc), ephemeral=True)
+        except Exception as e:
+            print(f"_q error: {e}")
+            traceback.print_exc()
+            if not i.response.is_done():
+                try:
+                    await i.response.send_message(embed=Embed.error("Queue Error", str(e)), ephemeral=True)
                 except Exception:
                     pass
 
-    async def _prev(self, i):
-        vc = i.guild.voice_client
-        hist = track_histories.get(i.guild.id, [])
-        if len(hist) < 2:
-            return await i.response.send_message(
-                embed=Embed.error("No History", "Nothing before this track."), ephemeral=True)
-        hist.pop()
-        prev = hist[-1]
-        await vc.play(prev)
-        await i.response.send_message(
-            embed=Embed.success("Previous", f"**{prev.title[:60]}**"), ephemeral=True)
-
-    async def _pr(self, i):
-        vc = i.guild.voice_client
-        if not vc or (not vc.playing and not vc.paused):
-            return await i.response.send_message(embed=Embed.error("Nothing Playing"), ephemeral=True)
-        if vc.paused:
-            await vc.pause(False)
-            await i.response.send_message(
-                embed=Embed.success("Resumed", f"{E.PLAY} Playback resumed"), ephemeral=True)
-        else:
-            await vc.pause(True)
-            await i.response.send_message(
-                embed=Embed.warning("Paused", f"{E.PAUSE} Playback paused"), ephemeral=True)
-
-    async def _stop(self, i):
-        vc = i.guild.voice_client
-        gid = i.guild.id
-        msg = active_player_messages.pop(gid, None)
-        if msg:
-            try: await msg.delete()
-            except Exception: pass
-        if vc:
+    async def _shuffle(self, i: discord.Interaction):
+        try:
+            vc = i.guild.voice_client
+            if not vc or vc.queue.is_empty:
+                return await i.response.send_message(embed=Embed.error("Queue Empty"), ephemeral=True)
+            q = list(vc.queue)
+            random.shuffle(q)
             vc.queue.clear()
-            await vc.disconnect()
-        await i.response.send_message(
-            embed=Embed.success("Stopped", "Playback stopped and disconnected."), ephemeral=True)
+            for t in q:
+                vc.queue.put(t)
+            await i.response.send_message(
+                embed=Embed.success("Shuffled", f"{E.SHUFFLE} Shuffled **{len(q)}** tracks"), ephemeral=True)
+        except Exception as e:
+            print(f"_shuffle error: {e}")
+            traceback.print_exc()
 
-    async def _skip(self, i):
-        vc = i.guild.voice_client
-        if not vc or not vc.playing:
-            return await i.response.send_message(embed=Embed.error("Nothing Playing"), ephemeral=True)
-        await vc.stop()
-        await i.response.send_message(
-            embed=Embed.success("Skipped", f"{E.SKIP} Moved to next track"), ephemeral=True)
+    async def _loop(self, i: discord.Interaction):
+        try:
+            vc = i.guild.voice_client
+            if not vc or not (vc.playing or vc.paused):
+                return await i.response.send_message(embed=Embed.error("Nothing Playing"), ephemeral=True)
+            vc.queue.mode = (wavelink.QueueMode.loop
+                             if vc.queue.mode != wavelink.QueueMode.loop
+                             else wavelink.QueueMode.normal)
+            state = "enabled" if vc.queue.mode == wavelink.QueueMode.loop else "disabled"
+            embed = (Embed.success(f"Loop {state.title()}", f"{E.LOOP} Loop mode **{state}**")
+                     if state == "enabled"
+                     else Embed.warning("Loop Disabled", f"{E.LOOP} Loop mode **disabled**"))
+            await i.response.send_message(embed=embed, ephemeral=True)
+        except Exception as e:
+            print(f"_loop error: {e}")
+            traceback.print_exc()
 
-    async def _replay(self, i):
-        vc = i.guild.voice_client
-        if not vc or not vc.playing:
-            return await i.response.send_message(embed=Embed.error("Nothing Playing"), ephemeral=True)
-        await vc.seek(0)
-        await i.response.send_message(
-            embed=Embed.success("Replaying", f"{E.REPLAY} Restarted current track"), ephemeral=True)
-
-    async def _mute(self, i):
-        vc = i.guild.voice_client
-        if not vc:
-            return await i.response.send_message(embed=Embed.error("Not Connected"), ephemeral=True)
-        if not hasattr(vc, "_pmv"):
-            vc._pmv = vc.volume
-            await vc.set_volume(0)
-            await i.response.send_message(embed=Embed.success("Muted", f"{E.VOL_MUTE}"), ephemeral=True)
-        else:
-            await vc.set_volume(vc._pmv)
-            delattr(vc, "_pmv")
-            await i.response.send_message(embed=Embed.success("Unmuted", f"{E.VOL_HIGH}"), ephemeral=True)
-
-    async def _vd(self, i):
-        vc = i.guild.voice_client
-        if not vc:
-            return await i.response.send_message(embed=Embed.error("Not Connected"), ephemeral=True)
-        new = max(0, vc.volume - 20)
-        await vc.set_volume(new)
-        await i.response.send_message(
-            embed=Embed.success("Volume", f"{E.VOL_LOW} `{vc.volume}%`"), ephemeral=True)
-
-    async def _vu(self, i):
-        vc = i.guild.voice_client
-        if not vc:
-            return await i.response.send_message(embed=Embed.error("Not Connected"), ephemeral=True)
-        new = min(200, vc.volume + 20)
-        await vc.set_volume(new)
-        await i.response.send_message(
-            embed=Embed.success("Volume", f"{E.VOL_HIGH} `{vc.volume}%`"), ephemeral=True)
-
-    async def _q(self, i):
-        vc = i.guild.voice_client
-        if not vc or vc.queue.is_empty:
-            return await i.response.send_message(embed=Embed.info("Queue", "Empty."), ephemeral=True)
-        await i.response.send_message(embed=Embed.queue_list(vc), ephemeral=True)
-
-    async def _shuffle(self, i):
-        vc = i.guild.voice_client
-        if not vc or vc.queue.is_empty:
-            return await i.response.send_message(embed=Embed.error("Queue Empty"), ephemeral=True)
-        q = list(vc.queue)
-        random.shuffle(q)
-        vc.queue.clear()
-        for t in q:
-            vc.queue.put(t)
-        await i.response.send_message(
-            embed=Embed.success("Shuffled", f"{E.SHUFFLE} Shuffled **{len(q)}** tracks"), ephemeral=True)
-
-    async def _loop(self, i):
-        vc = i.guild.voice_client
-        if not vc or not vc.playing:
-            return await i.response.send_message(embed=Embed.error("Nothing Playing"), ephemeral=True)
-        vc.queue.mode = (wavelink.QueueMode.loop
-                         if vc.queue.mode != wavelink.QueueMode.loop
-                         else wavelink.QueueMode.normal)
-        state = "enabled" if vc.queue.mode == wavelink.QueueMode.loop else "disabled"
-        embed = (Embed.success(f"Loop {state.title()}", f"{E.LOOP} Loop mode **{state}**")
-                 if state == "enabled"
-                 else Embed.warning("Loop Disabled", f"{E.LOOP} Loop mode **disabled**"))
-        await i.response.send_message(embed=embed, ephemeral=True)
-
-    async def _filter(self, i):
-        vc = i.guild.voice_client
-        if not vc:
-            return await i.response.send_message(embed=Embed.error("Not Connected"), ephemeral=True)
-        embed = discord.Embed(
-            title=f"{E.FILTER}  Audio Filters",
-            description="Choose a filter from the menu below to transform your audio.",
-            color=Colors.ACCENT
-        )
-        await i.response.send_message(embed=embed, view=FilterSelectView(vc, self.ctx), ephemeral=True)
+    async def _filter(self, i: discord.Interaction):
+        try:
+            vc = i.guild.voice_client
+            if not vc:
+                return await i.response.send_message(embed=Embed.error("Not Connected"), ephemeral=True)
+            embed = discord.Embed(
+                title=f"{E.FILTER}  Audio Filters",
+                description="Choose a filter from the menu below to transform your audio.",
+                color=Colors.ACCENT
+            )
+            await i.response.send_message(embed=embed, view=FilterSelectView(vc, self.ctx), ephemeral=True)
+        except Exception as e:
+            print(f"_filter error: {e}")
+            traceback.print_exc()
 
 
 # ═══════════════════════════════════════════════════════════
@@ -767,6 +830,7 @@ class Music(commands.Cog):
             print("🎵 Lavalink connected")
         except Exception as e:
             print(f"❌ Lavalink: {e}")
+            traceback.print_exc()
 
     async def auto_delete(self, msg, delay):
         await asyncio.sleep(delay)
@@ -796,38 +860,37 @@ class Music(commands.Cog):
     # ────────── PLAYER DISPLAY ──────────
 
     async def display_player(self, player, track, ctx, autoplay=False):
-    try:
-        gid = ctx.guild.id
-        old = active_player_messages.pop(gid, None)
-        if old:
-            try:
-                # Disable the old view's buttons so nothing is clickable
-                if old.components:
-                    await old.edit(view=None)
-            except Exception:
-                pass
-            try:
-                await old.delete()
-            except Exception:
-                pass
-
-        embed = Embed.now_playing(track, player, ctx.author)
-        view = MusicControlView(player, ctx)
-        msg = await ctx.send(embed=embed, view=view)
-        active_player_messages[gid] = msg
-        await self.log_play(ctx, track)
-
         try:
-            card_file = await NowPlayingCard.generate(track, player, ctx.author)
-            if card_file:
-                card_msg = await ctx.send(file=card_file)
-                asyncio.create_task(self.auto_delete(card_msg, 15))
-        except Exception as e:
-            print(f"Card: {e}")
+            gid = ctx.guild.id
+            old = active_player_messages.pop(gid, None)
+            if old:
+                # Disable buttons on old view so it can't be clicked again
+                try:
+                    if old.components:
+                        await old.edit(view=None)
+                except Exception:
+                    pass
+                try: await old.delete()
+                except Exception: pass
 
-    except Exception as e:
-        print(f"display_player: {e}")
-        traceback.print_exc()
+            embed = Embed.now_playing(track, player, ctx.author)
+            view = MusicControlView(player, ctx)
+            msg = await ctx.send(embed=embed, view=view)
+            active_player_messages[gid] = msg
+
+            await self.log_play(ctx, track)
+
+            try:
+                card_file = await NowPlayingCard.generate(track, player, ctx.author)
+                if card_file:
+                    card_msg = await ctx.send(file=card_file)
+                    asyncio.create_task(self.auto_delete(card_msg, 15))
+            except Exception as e:
+                print(f"Card: {e}")
+
+        except Exception as e:
+            print(f"display_player: {e}")
+            traceback.print_exc()
 
     # ────────── PLAY SOURCE ──────────
 
@@ -846,7 +909,7 @@ class Music(commands.Cog):
 
         vc.ctx = ctx
 
-        if vc.playing and vc.channel != ctx.author.voice.channel:
+        if (vc.playing or vc.paused) and vc.channel != ctx.author.voice.channel:
             return await ctx.send(embed=Embed.error(
                 "Wrong Channel", f"Join {vc.channel.mention} to control music."))
 
@@ -890,7 +953,6 @@ class Music(commands.Cog):
             else:
                 asyncio.create_task(self.auto_delete(search_msg, 3))
 
-        # If nothing playing, pop next and play
         if not was_playing and not vc.queue.is_empty:
             nt = vc.queue.get()
             await vc.play(nt)
@@ -957,6 +1019,7 @@ class Music(commands.Cog):
                     await vc.play(nt)
                     await self.display_player(vc, nt, ctx)
         except Exception as e:
+            traceback.print_exc()
             await ctx.send(embed=Embed.error("Spotify Error", str(e)))
 
     # ────────── PREFIX COMMANDS ──────────
@@ -992,7 +1055,7 @@ class Music(commands.Cog):
     @commands.command(name="pause")
     async def pause(self, ctx):
         vc = ctx.voice_client
-        if not vc or not vc.playing:
+        if not vc or not (vc.playing or vc.paused):
             return await ctx.send(embed=Embed.error("Nothing Playing"))
         await vc.pause(True)
         await ctx.send(embed=Embed.warning("Paused", f"{E.PAUSE} Playback paused"))
@@ -1008,10 +1071,10 @@ class Music(commands.Cog):
     @commands.command(name="skip")
     async def skip(self, ctx):
         vc = ctx.voice_client
-        if not vc or not vc.playing:
+        if not vc or not (vc.playing or vc.paused):
             return await ctx.send(embed=Embed.error("Nothing Playing"))
-        await vc.stop()
         await ctx.send(embed=Embed.success("Skipped", f"{E.SKIP} Next track"))
+        await vc.stop()
 
     @commands.command(name="stop")
     async def stop(self, ctx):
@@ -1023,9 +1086,12 @@ class Music(commands.Cog):
         if msg:
             try: await msg.delete()
             except Exception: pass
-        vc.queue.clear()
-        await vc.disconnect()
         await ctx.send(embed=Embed.success("Stopped", f"{E.STOP} Playback stopped"))
+        try:
+            vc.queue.clear()
+            await vc.disconnect()
+        except Exception as e:
+            print(f"stop error: {e}")
 
     @commands.command(name="volume", aliases=["vol"])
     async def volume(self, ctx, vol: int):
@@ -1041,8 +1107,8 @@ class Music(commands.Cog):
     @commands.command(name="queue", aliases=["q"])
     async def queue(self, ctx, page: int = 1):
         vc = ctx.voice_client
-        if not vc or vc.queue.is_empty:
-            return await ctx.send(embed=Embed.info("Queue", "The queue is empty."))
+        if not vc:
+            return await ctx.send(embed=Embed.error("Not Connected"))
         await ctx.send(embed=Embed.queue_list(vc, page))
 
     @commands.command(name="clearqueue", aliases=["cq"])
@@ -1069,7 +1135,7 @@ class Music(commands.Cog):
     @commands.command(name="loop")
     async def loop(self, ctx):
         vc = ctx.voice_client
-        if not vc or not vc.playing:
+        if not vc or not (vc.playing or vc.paused):
             return await ctx.send(embed=Embed.error("Nothing Playing"))
         vc.queue.mode = (wavelink.QueueMode.loop
                          if vc.queue.mode != wavelink.QueueMode.loop
@@ -1082,14 +1148,14 @@ class Music(commands.Cog):
     @commands.command(name="nowplaying", aliases=["np"])
     async def nowplaying(self, ctx):
         vc = ctx.voice_client
-        if not vc or not vc.playing:
+        if not vc or not (vc.playing or vc.paused):
             return await ctx.send(embed=Embed.error("Nothing Playing"))
         await ctx.send(embed=Embed.now_playing(vc.current, vc, ctx.author))
 
     @commands.command(name="seek")
     async def seek(self, ctx, seconds: int):
         vc = ctx.voice_client
-        if not vc or not vc.playing:
+        if not vc or not (vc.playing or vc.paused):
             return await ctx.send(embed=Embed.error("Nothing Playing"))
         if seconds < 0 or seconds * 1000 > vc.current.length:
             return await ctx.send(embed=Embed.error("Invalid", f"Must be 0-{vc.current.length // 1000}s."))
@@ -1099,7 +1165,7 @@ class Music(commands.Cog):
     @commands.command(name="replay")
     async def replay(self, ctx):
         vc = ctx.voice_client
-        if not vc or not vc.playing:
+        if not vc or not (vc.playing or vc.paused):
             return await ctx.send(embed=Embed.error("Nothing Playing"))
         await vc.seek(0)
         await ctx.send(embed=Embed.success("Replaying", f"{E.REPLAY} Restarted current track"))
@@ -1114,8 +1180,8 @@ class Music(commands.Cog):
             return await ctx.send(embed=Embed.error("No History"))
         hist.pop()
         prev = hist[-1]
-        await vc.play(prev)
         await ctx.send(embed=Embed.success("Previous", f"**{prev.title[:60]}**"))
+        await vc.play(prev)
 
     @commands.command(name="autoplay")
     async def autoplay(self, ctx):
@@ -1150,14 +1216,14 @@ class Music(commands.Cog):
             f"More will be added automatically.\n\n"
             f"Stop with `x!stop`"))
 
-        if not vc.playing and not vc.queue.is_empty:
+        if not (vc.playing or vc.paused) and not vc.queue.is_empty:
             nt = vc.queue.get()
             await vc.play(nt)
 
     @commands.command(name="filter")
     async def filter_cmd(self, ctx):
         vc = ctx.voice_client
-        if not vc or not vc.playing:
+        if not vc or not (vc.playing or vc.paused):
             return await ctx.send(embed=Embed.error("Nothing Playing"))
         embed = discord.Embed(
             title=f"{E.FILTER}  Audio Filters",
@@ -1293,7 +1359,9 @@ class Music(commands.Cog):
         if not player:
             return
 
-        # autoplay refill
+        # Reason for track ending
+        reason = getattr(payload, "reason", "finished")
+
         if getattr(player, "_autoplay_only", False) and len(player.queue) < 5:
             queries = ["lofi hip hop radio", "lofi study music", "chill lofi beats",
                        "latest hindi songs", "sad songs english", "top english songs"]
@@ -1306,24 +1374,34 @@ class Music(commands.Cog):
                 except Exception:
                     continue
 
-        # remove old embed
         if hasattr(player, "ctx") and player.ctx:
             gid = player.ctx.guild.id
             if not getattr(player, "_autoplay_only", False):
                 old = active_player_messages.pop(gid, None)
                 if old:
+                    try:
+                        if old.components:
+                            await old.edit(view=None)
+                    except Exception:
+                        pass
                     try: await old.delete()
                     except Exception: pass
 
         if not player.queue.is_empty:
             nxt = player.queue.get()
-            await player.play(nxt)
+            try:
+                await player.play(nxt)
+            except Exception as e:
+                print(f"auto-play next error: {e}")
+                traceback.print_exc()
+                return
             if hasattr(player, "ctx") and player.ctx:
                 cog = player.client.get_cog("Music")
                 if cog and not getattr(player, "_autoplay_only", False):
                     await cog.display_player(player, nxt, player.ctx)
         else:
             ctx = getattr(player, "ctx", None)
+            # Only disconnect if track finished naturally (not user skip)
             try: await player.disconnect()
             except Exception: pass
             if ctx:
@@ -1399,6 +1477,14 @@ bot = MusicBot()
 
 
 def main():
+    print(f"Python {sys.version.split()[0]}")
+    try:
+        import discord as _d, wavelink as _w
+        print(f"discord.py {_d.__version__}  |  wavelink {_w.__version__}")
+    except Exception:
+        traceback.print_exc()
+        return
+
     token = load_token()
     if not token:
         print("❌ DISCORD_TOKEN missing (env or bot_config.json)")
@@ -1407,8 +1493,8 @@ def main():
         bot.run(token)
     except discord.LoginFailure:
         print("❌ Invalid token")
-    except Exception as e:
-        print(f"❌ {e}")
+    except Exception:
+        traceback.print_exc()
 
 
 if __name__ == "__main__":
